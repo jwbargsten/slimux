@@ -3,7 +3,7 @@
 " License: MIT. See LICENSE
 
 if !exists('g:slimux_tmux_path')
-    let g:slimux_tmux_path = substitute(system('command -v tmux'), '\n\+$', '', '')
+    let g:slimux_tmux_path = "tmux"
 endif
 if $PREFERRED_TMUX != ''
     let g:tmux_preferred_cmd = ''
@@ -13,8 +13,6 @@ if $TMUX != ""
 else
     let s:vim_inside_tmux = 0
 endif
-let s:tmux_version = system(g:slimux_tmux_path . ' -V')[5:-1] " skip 5 chars: 'tmux '
-
 let s:slimux_panelist_cmd = g:slimux_tmux_path . ' list-panes -a'
 let s:retry_send = {}
 let s:last_selected_pane = ""
@@ -214,9 +212,12 @@ function! s:Send(tmux_packet)
         let text = s:ExecFileTypeFn("SlimuxEscape_", [text])
       endif
 
-      let named_buffer = s:tmux_version >= '2.0' ? '-b Slimux' : ''
-      call system(g:slimux_tmux_path . ' load-buffer ' . named_buffer . ' -', text)
-      call system(g:slimux_tmux_path . ' paste-buffer ' . named_buffer . ' -t ' . target)
+      let named_buffer = '-b Slimux'
+      let tmpfile = tempname()
+      call writefile(split(text, "\n", 1), tmpfile, "b")
+      call system('tmux load-buffer ' . named_buffer . ' '.shellescape(tmpfile))
+      call delete(tmpfile)
+      call system('tmux paste-buffer ' . named_buffer . ' -t ' . target)
 
       if type == "code"
         call s:ExecFileTypeFn("SlimuxPost_", [target])
@@ -225,7 +226,7 @@ function! s:Send(tmux_packet)
     elseif type == 'keys'
 
       let keys = a:tmux_packet["keys"]
-      call system(g:slimux_tmux_path . ' send-keys -t " . target . " " . keys)
+      call system(g:slimux_tmux_path . " send-keys -t " . target . " " . keys)
 
     endif
 
