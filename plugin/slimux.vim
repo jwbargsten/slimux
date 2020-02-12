@@ -186,7 +186,7 @@ function! s:SelectPane(tmux_packet, ...)
     if !exists("g:slimux_pane_hint_map")
       let g:slimux_pane_hint_map = 'd'
     endif
-    execute 'nnoremap <buffer> <silent> ' . g:slimux_pane_hint_map . ' :call system(['g:slimux_tmux_path, '"display-panes"])<CR>'
+    execute 'nnoremap <buffer> <silent> ' . g:slimux_pane_hint_map . ' :call system(["'g:slimux_tmux_path . '", "display-panes"])<CR>'
 
 endfunction
 
