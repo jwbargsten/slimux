@@ -16,6 +16,31 @@ endif
 let s:retry_send = {}
 let s:last_selected_pane = ""
 
+function SlimuxInit()
+  if 'g:did_slimux_init' | return | endif
+  let g:did_slimux_init = 1
+
+  let g:slimux_userlogin = substitute(system(['whoami']), "\\", "-", "")
+  if v:shell_error
+      let g:slimux_userlogin = 'unknown'
+  else
+      let newuline = stridx(g:slimux_userlogin, "\n")
+      if newuline != -1
+          let g:slimux_userlogin = strpart(g:slimux_userlogin, 0, newuline)
+      endif
+      unlet newuline
+  endif
+
+  let g:slimux_tmpdir = "/tmp/slimux-plugin-" . g:slimux_userlogin 
+  if !isdirectory(g:slimux_tmpdir)
+      call mkdir(g:slimux_tmpdir, "p", 0700)
+  endif
+
+  let b:bname = expand("%:t")
+  let b:bname = substitute(b:bname, " ", "",  "g")
+  let b:slimux_source = g:slimux_tmpdir . "/slimux-source-" . getpid() . "-" . b:bname
+endfunction
+
 function! s:PickPaneIdFromLine(line)
     let l:pane_match = matchlist(a:line, '\(^[^ ]\+\)\: ')
     if len(l:pane_match) == 0
