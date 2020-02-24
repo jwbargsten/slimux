@@ -3,7 +3,7 @@
 " License: MIT. See LICENSE
 
 if !exists('g:slimux_tmux_path')
-    let g:slimux_tmux_path = substitute(system('command -v tmux'), '\n\+$', '', '')
+    let g:slimux_tmux_path = "tmux"
 endif
 if $PREFERRED_TMUX != ''
     let g:tmux_preferred_cmd = ''
@@ -13,11 +13,33 @@ if $TMUX != ""
 else
     let s:vim_inside_tmux = 0
 endif
-let s:tmux_version = system(g:slimux_tmux_path . ' -V')[5:-1] " skip 5 chars: 'tmux '
-
-let s:slimux_panelist_cmd = g:slimux_tmux_path . ' list-panes -a'
 let s:retry_send = {}
 let s:last_selected_pane = ""
+
+function SlimuxInit()
+  if 'g:did_slimux_init' | return | endif
+  let g:did_slimux_init = 1
+
+  let g:slimux_userlogin = substitute(system(['whoami']), "\\", "-", "")
+  if v:shell_error
+      let g:slimux_userlogin = 'unknown'
+  else
+      let newuline = stridx(g:slimux_userlogin, "\n")
+      if newuline != -1
+          let g:slimux_userlogin = strpart(g:slimux_userlogin, 0, newuline)
+      endif
+      unlet newuline
+  endif
+
+  let g:slimux_tmpdir = "/tmp/slimux-plugin-" . g:slimux_userlogin 
+  if !isdirectory(g:slimux_tmpdir)
+      call mkdir(g:slimux_tmpdir, "p", 0700)
+  endif
+
+  let b:bname = expand("%:t")
+  let b:bname = substitute(b:bname, " ", "",  "g")
+  let b:slimux_source = g:slimux_tmpdir . "/slimux-source-" . getpid() . "-" . b:bname
+endfunction
 
 function! s:PickPaneIdFromLine(line)
     let l:pane_match = matchlist(a:line, '\(^[^ ]\+\)\: ')
@@ -28,12 +50,12 @@ function! s:PickPaneIdFromLine(line)
 endfunction
 
 function! SlimuxGetPaneList(lead, ...)
-    let l:panes = system(s:slimux_panelist_cmd)
+    let l:panes = system([ g:slimux_tmux_path, 'list-panes', '-a' ])
     let l:lst = map(split(l:panes, '\n'), 's:PickPaneIdFromLine(v:val)')
 
     if s:vim_inside_tmux == 1 && ( !exists("g:slimux_exclude_vim_pane") || g:slimux_exclude_vim_pane != 0 )
         " Remove current pane from pane list
-        let l:current_pane_id = system(g:slimux_tmux_path . ' display-message -p "#{session_name}:#{window_index}.#{pane_index}"')
+        let l:current_pane_id = system([g:slimux_tmux_path,'display-message', '-p', '#{session_name}:#{window_index}.#{pane_index}'])
         let l:current_pane_id = substitute(l:current_pane_id, "\n", "", "g")
         let l:lst = filter(l:lst, 'v:val !~ "' . l:current_pane_id . '"')
     endif
@@ -139,7 +161,7 @@ function! s:SelectPane(tmux_packet, ...)
 
     if s:vim_inside_tmux == 1 && ( !exists("g:slimux_exclude_vim_pane") || g:slimux_exclude_vim_pane != 0 )
         " Remove current pane from pane list
-        let l:current_pane_id = system(g:slimux_tmux_path . ' display-message -p "\#{pane_id}"')
+        let l:current_pane_id = system([g:slimux_tmux_path,'display-message', '-p', '#{pane_id}'])
         let l:current_pane_id = substitute(l:current_pane_id, "\n", "", "g")
         let l:command .= " | grep -E -v " . shellescape("^" . l:current_pane_id, 1)
     endif
@@ -189,7 +211,7 @@ function! s:SelectPane(tmux_packet, ...)
     if !exists("g:slimux_pane_hint_map")
       let g:slimux_pane_hint_map = 'd'
     endif
-    execute 'nnoremap <buffer> <silent> ' . g:slimux_pane_hint_map . ' :call system("' . g:slimux_tmux_path . ' display-panes")<CR>'
+    execute 'nnoremap <buffer> <silent> ' . g:slimux_pane_hint_map . ' :call system(["'g:slimux_tmux_path . '", "display-panes"])<CR>'
 
 endfunction
 
@@ -214,9 +236,11 @@ function! s:Send(tmux_packet)
         let text = s:ExecFileTypeFn("SlimuxEscape_", [text])
       endif
 
-      let named_buffer = s:tmux_version >= '2.0' ? '-b Slimux' : ''
-      call system(g:slimux_tmux_path . ' load-buffer ' . named_buffer . ' -', text)
-      call system(g:slimux_tmux_path . ' paste-buffer ' . named_buffer . ' -t ' . target)
+      let tmpfile = tempname()
+      call writefile(split(text, "\n", 1), tmpfile, "b")
+      call system([g:slimux_tmux_path, 'load-buffer', '-b', 'slimux', tmpfile])
+      call delete(tmpfile)
+      call system([g:slimux_tmux_path, 'paste-buffer', '-b', 'slimux', '-t', target])
 
       if type == "code"
         call s:ExecFileTypeFn("SlimuxPost_", [target])
@@ -225,7 +249,7 @@ function! s:Send(tmux_packet)
     elseif type == 'keys'
 
       let keys = a:tmux_packet["keys"]
-      call system(g:slimux_tmux_path . ' send-keys -t " . target . " " . keys)
+      call system([g:slimux_tmux_path,"send-keys", "-t", target, keys])
 
     endif
 
